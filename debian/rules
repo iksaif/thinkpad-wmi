@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+DEBVERS  := $(shell dpkg-parsechangelog | grep ^Version: | cut -d' ' -f2 \
+                | cut -d- -f1)
+VERSION  := $(shell echo '$(DEBVERS)' | sed -e 's/[+-].*//' -e 's/~//g')
+
+NAME = $(shell dh_listpackages)
+TMP     = $(CURDIR)/debian/$(NAME)
+
+SRC = $(TMP)/usr/src
+
+%:
+	dh --with dkms $@
+
+override_dh_auto_build:
+override_dh_auto_clean:
+
+override_dh_auto_install:
+	install -d "$(SRC)"
+	mkdir "$(SRC)/$(NAME)-$(VERSION)"
+	cp -a `ls | grep -v debian` "$(SRC)/$(NAME)-$(VERSION)"
+	chmod 644 -R "$(SRC)/$(NAME)-$(VERSION)"
+	find "$(SRC)/$(NAME)-$(VERSION)" -type d -exec chmod 755 {} \;
+
+	sed -e 's/#VERSION#/$(VERSION)/' $(CURDIR)/debian/dkms.conf.in \
+	  > "$(SRC)/$(NAME)-$(VERSION)/dkms.conf"
