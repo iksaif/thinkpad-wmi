@@ -1,16 +1,16 @@
 #!/bin/sh
 
-NAME=thinkpad-wmi-dkms
+PACKAGE_NAME=thinkpad-wmi-dkms
 
-DEBVERS=$(dpkg-query -W -f='${Version}' $NAME | awk -F- '{print $1}')
-VERSION=$(echo "$DEBVERS" | sed -e 's/[+-].*//' -e 's/~//g') 
+VERSION=`dpkg-query -W -f='${Version}' $PACKAGE_NAME | awk -F "-" '{print $1}' \
+    | cut -d\: -f2`
 
 set -e
 
 case "$1" in
     remove|upgrade|deconfigure)
-      if [  "`dkms status -m $NAME`" ]; then
-         dkms remove -m $NAME -v $VERSION --all
+      if [  "`dkms status -m \"$PACKAGE_NAME\"`" ]; then
+         dkms remove -m "$PACKAGE_NAME" -v "$VERSION" --all
       fi
     ;;
 
@@ -24,7 +24,3 @@ case "$1" in
 esac
 
 #DEBHELPER#
-
-exit 0
-
-

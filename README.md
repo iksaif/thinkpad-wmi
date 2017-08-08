@@ -8,26 +8,62 @@ BIOS settings from Linux, and maybe more.
 Directory: /sys/devices/platform/thinkpad-wmi/
 
 Each setting exposed by the WMI interface is available under its own name
-in this sysfs directory. Read from the file to get the list of options
-and write an option to the file to set it.
+in this sysfs directory. Read from the file to get the current value (line 1)
+and list of options (line 2), and write an option to the file to set it.
 
-Additionally, there are some extra files.
+Additionally, there are some extra files for querying and managing BIOS
+password(s).
 
-### Password
+### password
 
-Must contain the BIOS password, if set, to be able to do any change.
+Must contain the BIOS supervisor password (aka 'pap'), if set, to be able to do
+any change.
 
-### PasswordEncoding
+Every subsequent password change will be authorized with this password. The
+password may be unloaded by writing an empty string. Writing an invalid
+password may trigger the BIOS' invalid password limit, such that a reboot will
+be required in order to make any further BIOS changes.
 
-Unclear, can be '', 'ascii' or 'scancode'.
+### password_encoding
 
-### PasswordKbdLang
+Encoding used for the password, either '', 'scancode' or 'ascii'.
 
-Unclear, can be '', 'us', 'fr' or 'gr'.
+Scan-code encoding appears to require the key-down scan codes, e.g. 0x1e, 0x30,
+0x2e for the ASCII encoded password 'abc'.
+
+### password_kbd_lang
+
+Keyboard language mapping, can be '', 'us', 'fr' or 'gr'.
+
+### password_type
+
+Specify the password type to be changed when password_change is written to.
+Can be:
+* 'pap': supervisor password
+* 'pop': power-on-password
+
+Other types may be valid, e.g. for user and master disk passwords.
+
+### password_change
+
+Writing to this file will change the password specified by password_type. The
+new password will not take effect until the next reboot.
 
 ### password_settings
 
-Display password related settings.
+Display password related settings. This includes:
+
+* password_state: which passwords are set, if any
+  * bit 0: user password (power on password) is installed / 'pop'
+  * bit 1: admin/supervisor password is installed / 'pap'
+  * bit 2: hdd password(s) installed
+* supported_encodings: supported keyboard encoding(s)
+  * bit 0: ASCII
+  * bit 1: scancode
+* supported_keyboard: support keyboard language(s)
+  * bit 0: us
+  * bit 1: fr
+  * bit 2: gr
 
 ### load_default_settings
 

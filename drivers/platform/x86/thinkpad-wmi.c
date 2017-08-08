@@ -108,7 +108,8 @@ MODULE_LICENSE("GPL");
  * Name:
  *  Lenovo_LoadDefaultSettings
  * Description:
- *  Load default BIOS settings. Use Lenovo_SaveBiosSettings to save the settings.
+ *  Load default BIOS settings. Use Lenovo_SaveBiosSettings to save the
+ *  settings.
  * Type:
  *  Method
  * Arguments:
@@ -131,7 +132,7 @@ MODULE_LICENSE("GPL");
  *  SupportedEncoding, SupportedKeyboard
  */
 #define LENOVO_BIOS_PASSWORD_SETTINGS_GUID		\
-  	"8ADB159E-1E32-455C-BC93-308A7ED98246"
+	"8ADB159E-1E32-455C-BC93-308A7ED98246"
 
 /**
  * Name:
@@ -245,7 +246,7 @@ struct thinkpad_wmi_pcfg {
  *   argument
  *   instance
  *   instance_count
- *   password_settings
+ *   bios_password_settings
  */
 struct thinkpad_wmi_debug {
 	struct dentry *root;
@@ -260,10 +261,11 @@ struct thinkpad_wmi {
 
 	int settings_count;
 
-	char password[1024];
-	char password_encoding[256];
+	char password[64];
+	char password_encoding[64];
 	char password_kbdlang[4]; /* 2 bytes for \n\0 */
-	char auth_string[2048];
+	char auth_string[256];
+	char password_type[64];
 
 	bool can_set_bios_settings;
 	bool can_discard_bios_settings;
@@ -410,14 +412,14 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 	obj = output.pointer;
 	if (!obj || obj->type != ACPI_TYPE_BUFFER || !obj->buffer.pointer)
 		return -EIO;
-        if (obj->buffer.length != sizeof(*pcfg)) {
-                pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
-                kfree(obj);
-                return -EIO;
-        }
+	if (obj->buffer.length != sizeof(*pcfg)) {
+		pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
+		kfree(obj);
+		return -EIO;
+	}
 
-        memcpy(pcfg, obj->buffer.pointer, obj->buffer.length);
-        kfree(obj);
+	memcpy(pcfg, obj->buffer.pointer, obj->buffer.length);
+	kfree(obj);
 	return 0;
 }
 
@@ -425,7 +427,7 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 
 #define to_ext_attr(x) container_of(x, struct dev_ext_attribute, attr)
 
-static ssize_t show_settings(struct device *dev,
+static ssize_t show_setting(struct device *dev,
 			     struct device_attribute *attr,
 			     char *buf)
 {
@@ -446,34 +448,21 @@ static ssize_t show_settings(struct device *dev,
 	if (thinkpad->can_get_bios_selections) {
 		ret = thinkpad_wmi_get_bios_selections(name, &choices);
 		if (ret)
-			return ret;
-		pr_info("%s -> %s\n", name, choices);
+			goto error;
+		if (!choices || !*choices) {
+			ret = -EIO;
+			goto error;
+		}
 	}
 
-	/* Go to the current value */
 	value = strchr(settings, ',');
 	if (!value)
 		goto error;
 	value++;
 
-	if (!choices || !*choices) {
-		count = sprintf(buf, "%s\n", value);
-	} else {
-		char *token, *line = choices;
-		bool found = false;
-
-		while ((token = strsep(&line, ","))) {
-			if (!strcmp(value, token)) {
-				found = true;
-				count += sprintf(buf + count, "[%s] ", token);
-			} else
-				count += sprintf(buf + count, "%s ", token);
-		}
-
-		if (!found)
-			count += sprintf(buf + count, "[%s] ", value);
-	}
-	count += sprintf(buf + count, "\n");
+	count = sprintf(buf, "%s\n", value);
+	if (choices)
+		count += sprintf(buf + count, "%s\n", choices);
 
 error:
 	kfree(settings);
@@ -481,7 +470,7 @@ error:
 	return ret ? ret : count;
 }
 
-static ssize_t store_settings(struct device *dev,
+static ssize_t store_setting(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
 {
@@ -493,14 +482,18 @@ static ssize_t store_settings(struct device *dev,
 	size_t buffer_size;
 	char *buffer;
 
-	// Format: 'Item,Value,Authstring;'
+	/* Format: 'Item,Value,Authstring;' */
 	buffer_size = (strlen(item) + 1 + count + 1 +
 		       sizeof(thinkpad->auth_string) + 2);
-        buffer = kmalloc(buffer_size, GFP_KERNEL);
+	buffer = kmalloc(buffer_size, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
 
 	strcpy(buffer, item);
 	strcat(buffer, ",");
 	strncat(buffer, buf, count);
+	if (count)
+		strim(buffer);
 	if (*thinkpad->auth_string) {
 		strcat(buffer, ",");
 		strcat(buffer, thinkpad->auth_string);
@@ -513,10 +506,11 @@ static ssize_t store_settings(struct device *dev,
 
 	ret = thinkpad_wmi_save_bios_settings(thinkpad->auth_string);
 	if (ret) {
-		// Try to discard the settings if we failed to apply them.
+		/* Try to discard the settings if we failed to apply them. */
 		thinkpad_wmi_discard_bios_settings(thinkpad->auth_string);
 		goto end;
 	}
+	ret = count;
 
 end:
 	kfree(buffer);
@@ -540,38 +534,35 @@ static void update_auth_string(struct thinkpad_wmi *thinkpad)
 	if (!*thinkpad->password) {
 		/* No password at all */
 		thinkpad->auth_string[0] = '\0';
-		return ;
+		return;
 	}
 	strcpy(thinkpad->auth_string, thinkpad->password);
 
-	if (!*thinkpad->password_encoding)
-		return ;
-	strcat(thinkpad->auth_string, ",");
-	strcat(thinkpad->auth_string, thinkpad->password_encoding);
+	if (*thinkpad->password_encoding) {
+		strcat(thinkpad->auth_string, ",");
+		strcat(thinkpad->auth_string, thinkpad->password_encoding);
+	}
 
-	if (!*thinkpad->password_kbdlang)
-		return ;
-	strcat(thinkpad->auth_string, ",");
-	strcat(thinkpad->auth_string, thinkpad->password_kbdlang);
+	if (*thinkpad->password_kbdlang) {
+		strcat(thinkpad->auth_string, ",");
+		strcat(thinkpad->auth_string, thinkpad->password_kbdlang);
+	}
 }
 
 static ssize_t store_auth(struct thinkpad_wmi *thinkpad,
 			  const char *buf, size_t count,
 			  char *dst, size_t size)
 {
-	int i;
-
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
 	if (count > size - 1)
 		return -EINVAL;
 
-	/* Stop at '\n' */
-	for (i = 0; i < count && buf[i] != '\n'; ++i)
-		dst[i] = buf[i];
-
-	dst[i] = '\0';
+	/* dst may be being reused, NUL-terminate */
+	strscpy(dst, buf, count);
+	if (count)
+		strim(dst);
 
 	update_auth_string(thinkpad);
 
@@ -607,11 +598,12 @@ static ssize_t store_auth(struct thinkpad_wmi *thinkpad,
 		.store  = store_##_name,				\
 	}
 
-THINKPAD_WMI_CREATE_AUTH_ATTR(password, "Password", S_IRUSR|S_IWUSR);
-THINKPAD_WMI_CREATE_AUTH_ATTR(password_encoding, "PasswordEncoding",
+THINKPAD_WMI_CREATE_AUTH_ATTR(password, "password", S_IRUSR|S_IWUSR);
+THINKPAD_WMI_CREATE_AUTH_ATTR(password_encoding, "password_encoding",
 			      S_IRUSR|S_IWUSR);
-THINKPAD_WMI_CREATE_AUTH_ATTR(password_kbdlang, "PasswordKbdLang",
+THINKPAD_WMI_CREATE_AUTH_ATTR(password_kbdlang, "password_kbd_lang",
 			      S_IRUSR|S_IWUSR);
+THINKPAD_WMI_CREATE_AUTH_ATTR(password_type, "password_type", S_IRUSR|S_IWUSR);
 
 static ssize_t show_password_settings(struct device *dev,
 				      struct device_attribute *attr,
@@ -637,22 +629,81 @@ static ssize_t show_password_settings(struct device *dev,
 
 static DEVICE_ATTR(password_settings, S_IRUSR, show_password_settings, NULL);
 
+static ssize_t store_password_change(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct thinkpad_wmi *thinkpad = dev_get_drvdata(dev);
+	size_t buffer_size;
+	char *buffer;
+	ssize_t ret;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	/* Format: 'PasswordType,CurrentPw,NewPw,Encoding,KbdLang;' */
+
+	/* auth_string is the size of CurrentPassword,Encoding,KbdLang */
+	buffer_size = (sizeof(thinkpad->password_type) + 1 + count + 1 +
+		       sizeof(thinkpad->auth_string) + 2);
+	buffer = kmalloc(buffer_size, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	strcpy(buffer, thinkpad->password_type);
+
+	if (*thinkpad->password) {
+		strcat(buffer, ",");
+		strcat(buffer, thinkpad->password);
+	}
+	strcat(buffer, ",");
+	strncat(buffer, buf, count);
+	if (count)
+		strim(buffer);
+
+	if (*thinkpad->password_encoding) {
+		strcat(buffer, ",");
+		strcat(buffer, thinkpad->password_encoding);
+	}
+	if (*thinkpad->password_kbdlang) {
+		strcat(buffer, ",");
+		strcat(buffer, thinkpad->password_kbdlang);
+	}
+	strcat(buffer, ";");
+
+	ret = thinkpad_wmi_set_bios_password(buffer);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static struct device_attribute dev_attr_password_change = {
+	.attr = {
+		.name = "password_change",
+		.mode = S_IWUSR },
+	.store  = store_password_change,
+};
+
+
 static ssize_t store_load_default(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
 {
-  struct thinkpad_wmi *thinkpad = dev_get_drvdata(dev);
+	struct thinkpad_wmi *thinkpad = dev_get_drvdata(dev);
 
-  return thinkpad_wmi_load_default(thinkpad->auth_string);
+	return thinkpad_wmi_load_default(thinkpad->auth_string);
 }
 
 static DEVICE_ATTR(load_default_settings, S_IWUSR, NULL, store_load_default);
 
 static struct attribute *platform_attributes[] = {
+	&dev_attr_password_settings.attr,
 	&dev_attr_password.attr,
 	&dev_attr_password_encoding.attr,
 	&dev_attr_password_kbdlang.attr,
-	&dev_attr_password_settings.attr,
+	&dev_attr_password_type.attr,
+	&dev_attr_password_change.attr,
 	&dev_attr_load_default_settings.attr,
 	NULL
 };
@@ -679,14 +730,14 @@ static void thinkpad_wmi_sysfs_exit(struct platform_device *device)
 	sysfs_remove_group(&device->dev.kobj, &platform_attribute_group);
 
 	if (!thinkpad->devattrs)
-		return ;
+		return;
 
 	for (i = 0; i < thinkpad->settings_count; ++i) {
 		struct dev_ext_attribute *deveattr = &thinkpad->devattrs[i];
 		struct device_attribute *devattr = &deveattr->attr;
 
 		if (devattr->attr.name)
-		    device_remove_file(&device->dev, devattr);
+			device_remove_file(&device->dev, devattr);
 	}
 	kfree(thinkpad->devattrs);
 	thinkpad->devattrs = NULL;
@@ -711,12 +762,12 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
 		sysfs_attr_init(&devattr->attr);
 		devattr->attr.name = thinkpad->settings[i];
 		devattr->attr.mode = S_IRUGO | S_IWUSR;
-		devattr->show = show_settings;
-		devattr->store = store_settings;
+		devattr->show = show_setting;
+		devattr->store = store_setting;
 		deveattr->var = (void *)(uintptr_t)i;
 		ret = device_create_file(&device->dev, devattr);
 		if (ret) {
-			// Name is used to check is file has been created
+			/* Name is used to check is file has been created. */
 			devattr->attr.name = NULL;
 			return ret;
 		}
@@ -747,7 +798,6 @@ static ssize_t dbgfs_write_argument(struct file *file,
 	struct thinkpad_wmi *thinkpad = file->f_path.dentry->d_inode->i_private;
 	char *kernbuf = thinkpad->debug.argument;
 	size_t size = sizeof(thinkpad->debug.argument);
-	int i;
 
 	if (count > PAGE_SIZE - 1)
 		return -EINVAL;
@@ -760,9 +810,7 @@ static ssize_t dbgfs_write_argument(struct file *file,
 
 	kernbuf[count] = 0;
 
-	/* strip ending whitespace. */
-	for (i = count - 1; i >= 0 && isspace(kernbuf[i]); i--)
-		kernbuf[i] = 0;
+	strim(kernbuf);
 
 	return count;
 }
@@ -806,7 +854,7 @@ static void show_bios_setting_line(struct thinkpad_wmi *thinkpad,
 
 	ret = thinkpad_wmi_bios_setting(i, &settings);
 	if (ret || !settings)
-		return ;
+		return;
 
 	p = strchr(settings, ',');
 	if (p)
@@ -829,7 +877,7 @@ static void show_bios_setting_line(struct thinkpad_wmi *thinkpad,
 line_feed:
 	kfree(settings);
 	kfree(choices);
-	seq_printf(m, "\n");
+	seq_puts(m, "\n");
 }
 
 static int dbgfs_bios_settings(struct seq_file *m, void *data)
@@ -862,7 +910,7 @@ static int dbgfs_list_valid_choices(struct seq_file *m, void *data)
 
 	if (ret || !choices || !*choices) {
 		kfree(choices);
-		return -EINVAL;
+		return -EIO;
 	}
 
 	seq_printf(m, "%s\n", choices);
@@ -996,19 +1044,19 @@ static int thinkpad_wmi_debugfs_init(struct thinkpad_wmi *thinkpad)
 			continue;
 		if (!strcmp(node->name, "dicard_bios_settings") &&
 		    !thinkpad->can_discard_bios_settings)
-			continue ;
+			continue;
 		if (!strcmp(node->name, "load_default_settings") &&
 		    !thinkpad->can_load_default_settings)
-			continue ;
+			continue;
 		if (!strcmp(node->name, "get_bios_selections") &&
 		    !thinkpad->can_get_bios_selections)
-			continue ;
+			continue;
 		if (!strcmp(node->name, "set_bios_password") &&
 		    !thinkpad->can_set_bios_password)
-			continue ;
+			continue;
 		if (!strcmp(node->name, "bios_password_settings") &&
 		    !thinkpad->can_get_password_settings)
-			continue ;
+			continue;
 
 		node->thinkpad = thinkpad;
 		dent = debugfs_create_file(node->name, S_IFREG | S_IRUGO,
@@ -1042,9 +1090,9 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 
 		status = thinkpad_wmi_bios_setting(i, &item);
 		if (ACPI_FAILURE(status))
-			break ;
+			break;
 		if (!item || !*item)
-			break ;
+			break;
 		/* Remove the value part */
 		p = strchr(item, ',');
 		if (p)
@@ -1092,17 +1140,17 @@ static int __init thinkpad_wmi_add(struct platform_device *pdev)
 
 	err = thinkpad_wmi_platform_init(thinkpad);
 	if (err)
-		goto fail_platform;
+		goto error_platform;
 
 	err = thinkpad_wmi_debugfs_init(thinkpad);
 	if (err)
-		goto fail_debugfs;
+		goto error_debugfs;
 
 	return 0;
 
-fail_debugfs:
+error_debugfs:
 	thinkpad_wmi_platform_exit(thinkpad);
-fail_platform:
+error_platform:
 	kfree(thinkpad);
 	return err;
 }
@@ -1130,7 +1178,7 @@ static struct platform_device *platform_device;
 static int __init thinkpad_wmi_probe(struct platform_device *pdev)
 {
 	if (!wmi_has_guid(LENOVO_BIOS_SETTING_GUID)) {
-		pr_warning("Lenovo_BiosSetting GUID missing\n");
+		pr_warn("Lenovo_BiosSetting GUID missing\n");
 		return -ENODEV;
 	}
 
