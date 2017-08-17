@@ -1,3 +1,9 @@
+thinkpad-wmi (4.24) UNRELEASED; urgency=medium
+
+  * fix store_auth return value
+
+ -- Ben Low <benlow@google.com>  Thu, 17 Aug 2017 16:20:44 +1000
+
 thinkpad-wmi (4.23) unstable; urgency=medium
 
   * fix store_auth buffer length handling

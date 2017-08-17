@@ -560,7 +560,7 @@ static ssize_t store_auth(struct thinkpad_wmi *thinkpad,
 		return -EINVAL;
 
 	/* dst may be being reused, NUL-terminate */
-	count = strscpy(dst, buf, size);
+	strscpy(dst, buf, size);
 	if (count)
 		strim(dst);
 
