@@ -553,6 +553,8 @@ static ssize_t store_auth(struct thinkpad_wmi *thinkpad,
 			  const char *buf, size_t count,
 			  char *dst, size_t size)
 {
+	ssize_t ret;
+
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
@@ -560,7 +562,9 @@ static ssize_t store_auth(struct thinkpad_wmi *thinkpad,
 		return -EINVAL;
 
 	/* dst may be being reused, NUL-terminate */
-	strscpy(dst, buf, size);
+	ret = strscpy(dst, buf, size);
+	if (ret < 0)
+		return ret;
 	if (count)
 		strim(dst);
 
