@@ -1,9 +1,8 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
-DEBVERS  := $(shell dpkg-parsechangelog | grep ^Version: | cut -d' ' -f2 \
+VERSION  := $(shell dpkg-parsechangelog | grep ^Version: | cut -d' ' -f2 \
                 | cut -d- -f1)
-VERSION  := $(shell echo '$(DEBVERS)' | sed -e 's/[+-].*//' -e 's/~//g')
 
 NAME = $(shell dh_listpackages)
 TMP     = $(CURDIR)/debian/$(NAME)

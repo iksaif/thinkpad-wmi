@@ -1,24 +1,39 @@
-What:		/sys/devices/platform/thinkpad-wmi/Password
-Date:		Oct 2015
+What:		/sys/devices/platform/thinkpad-wmi/password
+Date:		Aug 2017
 KernelVersion:	4.22
 Contact:	"Corentin Chary" <corentin.chary@gmail.com>
 Description:
 		BIOS password needs to be written in this file if set
 		to be able to change BIOS settings.
 
-What:		/sys/devices/platform/thinkpad-wmi/PasswordEncoding
-Date:		Oct 2015
+What:		/sys/devices/platform/thinkpad-wmi/password_encoding
+Date:		Aug 2017
 KernelVersion:	4.22
 Contact:	"Corentin Chary" <corentin.chary@gmail.com>
 Description:
 		Password encoding ('ascii' or 'scanmode').
 
-What:		/sys/devices/platform/thinkpad-wmi/PasswordKbdLang
-Date:		Oct 2015
+What:		/sys/devices/platform/thinkpad-wmi/password_kbd_lang
+Date:		Aug 2017
 KernelVersion:	4.22
 Contact:	"Corentin Chary" <corentin.chary@gmail.com>
 Description:
 		Keyboard language used for password. One of 'us', 'fr' and 'gr'.
+
+What:		/sys/devices/platform/thinkpad-wmi/password_type
+Date:		Aug 2017
+KernelVersion:	4.22
+Contact:	"Corentin Chary" <corentin.chary@gmail.com>
+Description:
+		Password type to be changed when password_change is written to, e.g. 'pap'.
+
+What:		/sys/devices/platform/thinkpad-wmi/password_change
+Date:		Aug 2017
+KernelVersion:	4.22
+Contact:	"Corentin Chary" <corentin.chary@gmail.com>
+Description:
+		Writing to this file will set the password specified in password_type.
+		The new password will not take effect until the next reboot.
 
 What:		/sys/devices/platform/thinkpad-wmi/password_settings
 Date:		Oct 2015

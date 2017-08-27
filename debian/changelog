@@ -1,3 +1,26 @@
+thinkpad-wmi (4.24) UNRELEASED; urgency=medium
+
+  * fix store_auth return value
+
+ -- Ben Low <benlow@google.com>  Thu, 17 Aug 2017 16:20:44 +1000
+
+thinkpad-wmi (4.23) unstable; urgency=medium
+
+  * fix store_auth buffer length handling
+
+ -- Ben Low <benlow@google.com>  Tue, 15 Aug 2017 17:48:24 +1000
+
+thinkpad-wmi (4.22) unstable; urgency=medium
+
+  * Try to load the module on installation, and unload it on uninstall.
+  * Allow installation on linux-headers-amd64
+  * Change the module output to be current value on the first line and
+  possible values on the second line.
+  * Fixed support for BIOS passwords, checkpatch cleanup.
+  * Added lintian-override.
+
+ -- Ben Low <benlow@google.com>  Mon, 10 Jul 2017 13:14:00 -0700
+
 thinkpad-wmi (4.21) testing; urgency=low
 
   * Initial release.
