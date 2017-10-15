@@ -5,7 +5,7 @@ BIOS settings from Linux, and maybe more.
 
 ## sysfs interface
 
-Directory: /sys/devices/platform/thinkpad-wmi/
+Directory: /sys/bus/wmi/drivers/thinkpad-wmi/
 
 Each setting exposed by the WMI interface is available under its own name
 in this sysfs directory. Read from the file to get the current value (line 1)
