@@ -1,7 +1,7 @@
 /*
- * Thinkpad WMI hotkey driver
+ * Thinkpad WMI configuration driver
  *
- * Copyright(C) 2012 Corentin Chary <corentin.chary@gmail.com>
+ * Copyright(C) 2017 Corentin Chary <corentin.chary@gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -13,23 +13,21 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/acpi.h>
+#include <linux/debugfs.h>
+#include <linux/device.h>
+#include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/init.h>
-#include <linux/types.h>
-#include <linux/debugfs.h>
-#include <linux/uaccess.h>
-#include <linux/seq_file.h>
 #include <linux/platform_device.h>
-#include <linux/device.h>
-#include <linux/acpi.h>
+#include <linux/seq_file.h>
+#include <linux/types.h>
+#include <linux/uaccess.h>
+#include <linux/wmi.h>
 
 #define	THINKPAD_WMI_FILE	"thinkpad-wmi"
 
@@ -257,7 +255,7 @@ struct thinkpad_wmi_debug {
 };
 
 struct thinkpad_wmi {
-	struct platform_device *platform_device;
+	struct wmi_device *wmi_device;
 
 	int settings_count;
 
@@ -428,8 +426,8 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 #define to_ext_attr(x) container_of(x, struct dev_ext_attribute, attr)
 
 static ssize_t show_setting(struct device *dev,
-			     struct device_attribute *attr,
-			     char *buf)
+			    struct device_attribute *attr,
+			    char *buf)
 {
 	struct thinkpad_wmi *thinkpad = dev_get_drvdata(dev);
 	struct dev_ext_attribute *ea = to_ext_attr(attr);
@@ -726,12 +724,12 @@ static struct attribute_group platform_attribute_group = {
 	.attrs		= platform_attributes
 };
 
-static void thinkpad_wmi_sysfs_exit(struct platform_device *device)
+static void thinkpad_wmi_sysfs_exit(struct wmi_device *wdev)
 {
-	struct thinkpad_wmi *thinkpad = platform_get_drvdata(device);
+	struct thinkpad_wmi *thinkpad = dev_get_drvdata(&wdev->dev);
 	int i;
 
-	sysfs_remove_group(&device->dev.kobj, &platform_attribute_group);
+	sysfs_remove_group(&wdev->dev.kobj, &platform_attribute_group);
 
 	if (!thinkpad->devattrs)
 		return;
@@ -741,15 +739,15 @@ static void thinkpad_wmi_sysfs_exit(struct platform_device *device)
 		struct device_attribute *devattr = &deveattr->attr;
 
 		if (devattr->attr.name)
-			device_remove_file(&device->dev, devattr);
+			device_remove_file(&wdev->dev, devattr);
 	}
 	kfree(thinkpad->devattrs);
 	thinkpad->devattrs = NULL;
 }
 
-static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
+static int __init thinkpad_wmi_sysfs_init(struct wmi_device *wdev)
 {
-	struct thinkpad_wmi *thinkpad = platform_get_drvdata(device);
+	struct thinkpad_wmi *thinkpad = dev_get_drvdata(&wdev->dev);
 	struct dev_ext_attribute *devattrs;
 	int count = thinkpad->settings_count;
 	int i, ret;
@@ -769,7 +767,7 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
 		devattr->show = show_setting;
 		devattr->store = store_setting;
 		deveattr->var = (void *)(uintptr_t)i;
-		ret = device_create_file(&device->dev, devattr);
+		ret = device_create_file(&wdev->dev, devattr);
 		if (ret) {
 			/* Name is used to check is file has been created. */
 			devattr->attr.name = NULL;
@@ -777,7 +775,7 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
 		}
 	}
 
-	return sysfs_create_group(&device->dev.kobj, &platform_attribute_group);
+	return sysfs_create_group(&wdev->dev.kobj, &platform_attribute_group);
 }
 
 /*
@@ -785,12 +783,12 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
  */
 static int __init thinkpad_wmi_platform_init(struct thinkpad_wmi *thinkpad)
 {
-	return thinkpad_wmi_sysfs_init(thinkpad->platform_device);
+	return thinkpad_wmi_sysfs_init(thinkpad->wmi_device);
 }
 
 static void thinkpad_wmi_platform_exit(struct thinkpad_wmi *thinkpad)
 {
-	thinkpad_wmi_sysfs_exit(thinkpad->platform_device);
+	thinkpad_wmi_sysfs_exit(thinkpad->wmi_device);
 }
 
 /* debugfs */
@@ -836,7 +834,6 @@ static int thinkpad_wmi_debugfs_argument_open(struct inode *inode,
 }
 
 static const struct file_operations thinkpad_wmi_debugfs_argument_fops = {
-	.owner		= THIS_MODULE,
 	.open		= thinkpad_wmi_debugfs_argument_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
@@ -910,7 +907,7 @@ static int dbgfs_list_valid_choices(struct seq_file *m, void *data)
 	int ret;
 
 	ret = thinkpad_wmi_get_bios_selections(thinkpad->debug.argument,
-					      &choices);
+					       &choices);
 
 	if (ret || !choices || !*choices) {
 		kfree(choices);
@@ -1128,7 +1125,7 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		thinkpad->can_get_password_settings = true;
 }
 
-static int __init thinkpad_wmi_add(struct platform_device *pdev)
+static int __init thinkpad_wmi_add(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad;
 	int err;
@@ -1137,8 +1134,8 @@ static int __init thinkpad_wmi_add(struct platform_device *pdev)
 	if (!thinkpad)
 		return -ENOMEM;
 
-	thinkpad->platform_device = pdev;
-	platform_set_drvdata(thinkpad->platform_device, thinkpad);
+	thinkpad->wmi_device = wdev;
+	dev_set_drvdata(&wdev->dev, thinkpad);
 
 	thinkpad_wmi_analyze(thinkpad);
 
@@ -1159,12 +1156,12 @@ error_platform:
 	return err;
 }
 
-static int __exit thinkpad_wmi_remove(struct platform_device *device)
+static int __exit thinkpad_wmi_remove(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad;
 	int i;
 
-	thinkpad = platform_get_drvdata(device);
+	thinkpad = dev_get_drvdata(&wdev->dev);
 	thinkpad_wmi_debugfs_exit(thinkpad);
 	thinkpad_wmi_platform_exit(thinkpad);
 
@@ -1177,40 +1174,34 @@ static int __exit thinkpad_wmi_remove(struct platform_device *device)
 	return 0;
 }
 
-static struct platform_device *platform_device;
-
-static int __init thinkpad_wmi_probe(struct platform_device *pdev)
+static int __init thinkpad_wmi_probe(struct wmi_device *wdev)
 {
-	if (!wmi_has_guid(LENOVO_BIOS_SETTING_GUID)) {
-		pr_warn("Lenovo_BiosSetting GUID missing\n");
-		return -ENODEV;
-	}
-
-	return thinkpad_wmi_add(pdev);
+	return thinkpad_wmi_add(wdev);
 }
 
-static struct platform_driver platform_driver = {
-	.remove = __exit_p(thinkpad_wmi_remove),
+static const struct wmi_device_id thinkpad_wmi_id_table[] = {
+	// Search for Lenovo_BiosSetting
+	{ .guid_string = LENOVO_BIOS_SETTING_GUID },
+	{ },
+};
+
+static struct wmi_driver thinkpad_wmi_driver = {
 	.driver = {
-		.name = THINKPAD_WMI_FILE,
-		.owner = THIS_MODULE,
+		.name = "thinkpad-wmi",
 	},
+	.id_table = thinkpad_wmi_id_table,
+	.probe = thinkpad_wmi_probe,
+	.remove = thinkpad_wmi_remove,
 };
 
 static int __init thinkpad_wmi_init(void)
 {
-	platform_device = platform_create_bundle(&platform_driver,
-						 thinkpad_wmi_probe,
-						 NULL, 0, NULL, 0);
-	if (IS_ERR(platform_device))
-		return PTR_ERR(platform_device);
-	return 0;
+	return wmi_driver_register(&thinkpad_wmi_driver);
 }
 
 static void __exit thinkpad_wmi_exit(void)
 {
-	platform_device_unregister(platform_device);
-	platform_driver_unregister(&platform_driver);
+	wmi_driver_unregister(&thinkpad_wmi_driver);
 }
 
 module_init(thinkpad_wmi_init);
