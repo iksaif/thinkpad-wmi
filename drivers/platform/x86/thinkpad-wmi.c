@@ -745,7 +745,7 @@ static void thinkpad_wmi_sysfs_exit(struct wmi_device *wdev)
 	thinkpad->devattrs = NULL;
 }
 
-static int __init thinkpad_wmi_sysfs_init(struct wmi_device *wdev)
+static int thinkpad_wmi_sysfs_init(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad = dev_get_drvdata(&wdev->dev);
 	struct dev_ext_attribute *devattrs;
@@ -781,7 +781,7 @@ static int __init thinkpad_wmi_sysfs_init(struct wmi_device *wdev)
 /*
  * Platform device
  */
-static int __init thinkpad_wmi_platform_init(struct thinkpad_wmi *thinkpad)
+static int thinkpad_wmi_platform_init(struct thinkpad_wmi *thinkpad)
 {
 	return thinkpad_wmi_sysfs_init(thinkpad->wmi_device);
 }
@@ -998,7 +998,7 @@ static const struct file_operations thinkpad_wmi_debugfs_io_ops = {
 	.release = single_release,
 };
 
-static void __init thinkpad_wmi_debugfs_exit(struct thinkpad_wmi *thinkpad)
+static void thinkpad_wmi_debugfs_exit(struct thinkpad_wmi *thinkpad)
 {
 	debugfs_remove_recursive(thinkpad->debug.root);
 }
@@ -1078,7 +1078,7 @@ error_debugfs:
 }
 
 /* Base driver */
-static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
+static void thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 {
 	acpi_status status;
 	int i = 0;
@@ -1125,7 +1125,7 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		thinkpad->can_get_password_settings = true;
 }
 
-static int __init thinkpad_wmi_add(struct wmi_device *wdev)
+static int thinkpad_wmi_add(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad;
 	int err;
@@ -1156,7 +1156,7 @@ error_platform:
 	return err;
 }
 
-static int __exit thinkpad_wmi_remove(struct wmi_device *wdev)
+static int thinkpad_wmi_remove(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad;
 	int i;
@@ -1174,7 +1174,7 @@ static int __exit thinkpad_wmi_remove(struct wmi_device *wdev)
 	return 0;
 }
 
-static int __init thinkpad_wmi_probe(struct wmi_device *wdev)
+static int thinkpad_wmi_probe(struct wmi_device *wdev)
 {
 	return thinkpad_wmi_add(wdev);
 }
