@@ -285,33 +285,60 @@ static int thinkpad_wmi_check_output(const struct acpi_buffer *output,
 	int ret;
 
 	obj = output->pointer;
-	if (!obj || obj->type != ACPI_TYPE_STRING || !obj->string.pointer)
+	if (!obj)
 		ret =  -EIO;
 
-	/* value assigned -> wmi call returning output */
-	else if(value) {
-		*value = kstrdup(obj->string.pointer, GFP_KERNEL);
-		if (*value)
-			ret = THINKPAD_WMI_SUCCESS;
-		else
-			ret = -ENOMEM;
-	}
+	else if(obj->type == ACPI_TYPE_STRING) {
 
-	/* value not assigned => wmi call with return value (e.g. change settings) */
-	else if (!strcmp(obj->string.pointer, "Success"))
-		ret = THINKPAD_WMI_SUCCESS;
-	else if (!strcmp(obj->string.pointer, "Not Supported"))
-		ret =  THINKPAD_WMI_NOT_SUPPORTED;
-	else if (!strcmp(obj->string.pointer, "Invalid"))
-		ret =  THINKPAD_WMI_INVALID;
-	else if (!strcmp(obj->string.pointer, "Access Denied"))
-		ret =  THINKPAD_WMI_ACCESS_DENIED;
-	else if (!strcmp(obj->string.pointer, "System Busy"))
-		ret =  THINKPAD_WMI_SYSTEM_BUSY;
-	else {
-		pr_debug("Unknown error string: '%s'", obj->string.pointer);
-		ret =  -EINVAL;
-	}
+		if (!obj->string.pointer)
+			ret =  -EIO;
+
+		/* value assigned -> wmi call returning output */
+		else if(value) {
+			*value = kstrdup(obj->string.pointer, GFP_KERNEL);
+			if (*value)
+				ret = THINKPAD_WMI_SUCCESS;
+			else
+				ret = -ENOMEM;
+		}
+
+		/* value not assigned => wmi call with return value (e.g. change settings) */
+		else if (!strcmp(obj->string.pointer, "Success"))
+			ret = THINKPAD_WMI_SUCCESS;
+		else if (!strcmp(obj->string.pointer, "Not Supported"))
+			ret =  THINKPAD_WMI_NOT_SUPPORTED;
+		else if (!strcmp(obj->string.pointer, "Invalid"))
+			ret =  THINKPAD_WMI_INVALID;
+		else if (!strcmp(obj->string.pointer, "Access Denied"))
+			ret =  THINKPAD_WMI_ACCESS_DENIED;
+		else if (!strcmp(obj->string.pointer, "System Busy"))
+			ret =  THINKPAD_WMI_SYSTEM_BUSY;
+		else {
+			pr_debug("Unknown error string: '%s'", obj->string.pointer);
+			ret =  -EINVAL;
+		}
+
+	} else if(obj->type == ACPI_TYPE_BUFFER) {
+
+		if (!obj->buffer.pointer)
+			ret =  -EIO;
+
+		/* TBD
+		else if (obj->buffer.length != sizeof(**value)) {
+			pr_warn("Unknown buffer length %lu\n", sizeof((char **)value));
+			ret = -EIO;
+		}*/
+
+		else {
+			memcpy(*value, obj->buffer.pointer, obj->buffer.length);
+			if (*value)
+				ret = THINKPAD_WMI_SUCCESS;
+			else
+				ret = -ENOMEM;
+		}
+
+	} else
+		ret = -ENOMSG;
 
 	kfree(obj);
 	return ret;
@@ -331,12 +358,12 @@ static int thinkpad_wmi_call(const char *guid, const char *arg, char **value)
 	return thinkpad_wmi_check_output(&output, value);
 }
 
-static int thinkpad_wmi_bios_setting(int item, char **value)
+static int thinkpad_wmi_bios_setting(const char *guid, int item, char **value)
 {
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
 	acpi_status status;
 
-	status = wmi_query_block(LENOVO_BIOS_SETTING_GUID, item, &output);
+	status = wmi_query_block(guid, item, &output);
 	if (ACPI_FAILURE(status))
 		return -EIO;
 
@@ -345,28 +372,9 @@ static int thinkpad_wmi_bios_setting(int item, char **value)
 
 static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 {
-	const union acpi_object *obj;
+	char **ppcfg = (char **) &pcfg;
 
-	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
-	acpi_status status;
-
-	status = wmi_query_block(LENOVO_BIOS_PASSWORD_SETTINGS_GUID, 0,
-				 &output);
-	if (ACPI_FAILURE(status))
-		return -EIO;
-
-	obj = output.pointer;
-	if (!obj || obj->type != ACPI_TYPE_BUFFER || !obj->buffer.pointer)
-		return -EIO;
-	if (obj->buffer.length != sizeof(*pcfg)) {
-		pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
-		kfree(obj);
-		return -EIO;
-	}
-
-	memcpy(pcfg, obj->buffer.pointer, obj->buffer.length);
-	kfree(obj);
-	return 0;
+	return thinkpad_wmi_bios_setting(LENOVO_BIOS_PASSWORD_SETTINGS_GUID, 0, ppcfg);
 }
 
 static int thinkpad_wmi_set_bios_settings(const char *settings)
@@ -410,7 +418,7 @@ static ssize_t show_setting(struct device *dev,
 	ssize_t count = 0;
 	int ret;
 
-	ret = thinkpad_wmi_bios_setting(item, &settings);
+	ret = thinkpad_wmi_bios_setting(LENOVO_BIOS_SETTING_GUID, item, &settings);
 	if (ret)
 		return ret;
 	if (!settings)
@@ -826,7 +834,7 @@ static void show_bios_setting_line(struct thinkpad_wmi *thinkpad,
 	int ret;
 	char *settings = NULL, *choices = NULL, *p;
 
-	ret = thinkpad_wmi_bios_setting(i, &settings);
+	ret = thinkpad_wmi_bios_setting(LENOVO_BIOS_SETTING_GUID, i, &settings);
 	if (ret || !settings)
 		return;
 
@@ -1062,7 +1070,7 @@ static void thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		char *item = NULL;
 		char *p;
 
-		status = thinkpad_wmi_bios_setting(i, &item);
+		status = thinkpad_wmi_bios_setting(LENOVO_BIOS_SETTING_GUID, i, &item);
 		if (ACPI_FAILURE(status))
 			break;
 		if (!item || !*item)
