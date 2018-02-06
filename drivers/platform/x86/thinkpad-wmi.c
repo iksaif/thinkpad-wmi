@@ -358,6 +358,11 @@ static int thinkpad_wmi_call(const char *guid, const char *arg, char **value)
 	return thinkpad_wmi_check_output(&output, value);
 }
 
+static int thinkpad_wmi_simple_call(const char *guid, const char *arg)
+{
+	return thinkpad_wmi_call(guid, arg, NULL);
+}
+
 static int thinkpad_wmi_bios_setting(const char *guid, int item, char **value)
 {
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
@@ -379,27 +384,27 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 
 static int thinkpad_wmi_set_bios_settings(const char *settings)
 {
-	return thinkpad_wmi_call(LENOVO_SET_BIOS_SETTINGS_GUID, settings, NULL);
+	return thinkpad_wmi_simple_call(LENOVO_SET_BIOS_SETTINGS_GUID, settings);
 }
 
 static int thinkpad_wmi_save_bios_settings(const char *password)
 {
-	return thinkpad_wmi_call(LENOVO_SAVE_BIOS_SETTINGS_GUID, password, NULL);
+	return thinkpad_wmi_simple_call(LENOVO_SAVE_BIOS_SETTINGS_GUID, password);
 }
 
 static int thinkpad_wmi_discard_bios_settings(const char *password)
 {
-	return thinkpad_wmi_call(LENOVO_DISCARD_BIOS_SETTINGS_GUID, password, NULL);
+	return thinkpad_wmi_simple_call(LENOVO_DISCARD_BIOS_SETTINGS_GUID, password);
 }
 
 static int thinkpad_wmi_load_default(const char *password)
 {
-	return thinkpad_wmi_call(LENOVO_LOAD_DEFAULT_SETTINGS_GUID, password, NULL);
+	return thinkpad_wmi_simple_call(LENOVO_LOAD_DEFAULT_SETTINGS_GUID, password);
 }
 
 static int thinkpad_wmi_set_bios_password(const char *settings)
 {
-	return thinkpad_wmi_call(LENOVO_SET_BIOS_PASSWORD_GUID, settings, NULL);
+	return thinkpad_wmi_simple_call(LENOVO_SET_BIOS_PASSWORD_GUID, settings);
 }
 
 /* sysfs */
