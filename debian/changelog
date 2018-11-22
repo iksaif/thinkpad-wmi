@@ -1,6 +1,7 @@
 thinkpad-wmi (4.25) UNRELEASED; urgency=medium
 
-  * fix store_auth return value
+  * Add initramfs integration to include the module into the initrd.
+    That allows autoloading on boot.
 
  -- Parth Shukla <timevortex@google.com>  Thu, 22 Nov 2018 14:23:44 +0200
 
