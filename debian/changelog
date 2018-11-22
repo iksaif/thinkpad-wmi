@@ -3,7 +3,7 @@ thinkpad-wmi (4.25) UNRELEASED; urgency=medium
   * Add initramfs integration to include the module into the initrd.
     That allows autoloading on boot.
 
- -- Parth Shukla <timevortex@google.com>  Thu, 22 Nov 2018 14:23:44 +0200
+ -- Philipp Kern <pkern@google.com>  Wed, 24 Oct 2018 14:19:27 +0200
 
 thinkpad-wmi (4.24) UNRELEASED; urgency=medium
 
