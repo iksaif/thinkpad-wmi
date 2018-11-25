@@ -1,0 +1,2 @@
+#!/usr/bin/dh-exec
+debian/initramfs-hook.sh => /usr/share/initramfs-tools/hooks/thinkpad-wmi.sh

@@ -10,7 +10,7 @@ TMP     = $(CURDIR)/debian/$(NAME)
 SRC = $(TMP)/usr/src
 
 %:
-	dh --with dkms $@
+	dh $@ --with dkms
 
 override_dh_auto_build:
 override_dh_auto_clean:
