@@ -277,7 +277,7 @@ struct thinkpad_wmi {
 	char password[64];
 	char password_encoding[64];
 	char password_kbdlang[4]; /* 2 bytes for \n\0 */
-	char auth_string[512]; //TL-18 256 -> 512
+	char auth_string[256];
 	char password_type[64];
 
 	bool can_set_bios_settings;
@@ -287,7 +287,7 @@ struct thinkpad_wmi {
 	bool can_set_bios_password;
 	bool can_get_password_settings;
 
-	char *settings[512]; //TL-18 256 -> 512
+	char *settings[256];
 	struct dev_ext_attribute *devattrs;
 	struct thinkpad_wmi_debug debug;
 };
@@ -367,17 +367,17 @@ static int thinkpad_wmi_bios_setting(int item, char **value)
 	return thinkpad_wmi_extract_output_string(&output, value);
 }
 
-static int thinkpad_wmi_platform_setting(int item, char **value)            //@Platform_settings
-{                                                                           //@Platform_settings
-	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };             //@Platform_settings
-	acpi_status status;                                                     //@Platform_settings
-                                                                            //@Platform_settings
-	status = wmi_query_block(LENOVO_PLATFORM_SETTING_GUID, item, &output);  //@Platform_settings
-	if (ACPI_FAILURE(status))                                               //@Platform_settings
-		return -EIO;                                                        //@Platform_settings
-                                                                            //@Platform_settings
-	return thinkpad_wmi_extract_output_string(&output, value);              //@Platform_settings
-}                                                                           //@Platform_settings
+static int thinkpad_wmi_platform_setting(int item, char **value)
+{
+	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
+	acpi_status status;
+
+	status = wmi_query_block(LENOVO_PLATFORM_SETTING_GUID, item, &output);
+	if (ACPI_FAILURE(status))
+		return -EIO;
+
+	return thinkpad_wmi_extract_output_string(&output, value);
+}
 
 static int thinkpad_wmi_get_bios_selections(const char *item, char **value)
 {
@@ -400,11 +400,11 @@ static int thinkpad_wmi_set_bios_settings(const char *settings)
 					settings);
 }
 
-static int thinkpad_wmi_set_platform_settings(const char *settings)         //@Platform_settings
-{                                                                           //@Platform_settings
-	return thinkpad_wmi_simple_call(LENOVO_SET_PLATFORM_SETTINGS_GUID,      //@Platform_settings
-					settings);                                              //@Platform_settings
-}                                                                           //@Platform_settings
+static int thinkpad_wmi_set_platform_settings(const char *settings)
+{
+	return thinkpad_wmi_simple_call(LENOVO_SET_PLATFORM_SETTINGS_GUID,
+					settings);
+}
 
 static int thinkpad_wmi_save_bios_settings(const char *password)
 {
@@ -446,16 +446,21 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 		return -EIO;
 			
 	if (obj->buffer.length != sizeof(*pcfg)) {
-	   if (obj->buffer.length >sizeof(*pcfg)){
-	       memcpy(pcfg, obj->buffer.pointer, sizeof(*pcfg));
-	       kfree(obj);
-   	       return 0;
-	   }
-	   else{
-	       pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
-	       kfree(obj);
-	       return -EIO;
-	   }
+
+		/* The size of thinkpad_wmi_pcfg on ThinkStation is larger than ThinkPad.
+		 * To make the driver compatible on different brands, we permit it to get
+		 * the data in below case.  
+		 */
+		if (obj->buffer.length > sizeof(*pcfg)) {
+			memcpy(pcfg, obj->buffer.pointer, sizeof(*pcfg));
+			kfree(obj);
+			return 0;
+		}
+		else{
+			pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
+			kfree(obj);
+			return -EIO;
+		}
 	}
 
 	memcpy(pcfg, obj->buffer.pointer, obj->buffer.length);
@@ -521,14 +526,15 @@ static ssize_t store_setting(struct device *dev,
 	int ret;
 	size_t buffer_size;
 	char *buffer;
-
-        int spleng=0;
-        int num=0;
-        spleng=strlen(item);
-        for(num=0;num < spleng; num++) {
-            if(item[num]=='\\')
-               item[num]='/';
-        }
+	
+	/* Convert '\' to '/'. Please have a look at thinkpad_wmi_analyze. */
+	int spleng = 0;
+	int num = 0;
+	spleng = strlen(item);
+	for (num = 0; num < spleng; num++) {
+		if (item[num] == '\\')
+			item[num] = '/';
+	}
 
 	/* Format: 'Item,Value,Authstring;' */
 	buffer_size = (strlen(item) + 1 + count + 1 +
@@ -815,7 +821,7 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
 	for (i = 0; i < count; ++i) {
 		struct dev_ext_attribute *deveattr = &devattrs[i];
 		struct device_attribute *devattr = &deveattr->attr;
-    	if(!thinkpad->settings[i]){
+		if(!thinkpad->settings[i]) {
 			continue;
 		}
 		sysfs_attr_init(&devattr->attr);
@@ -939,39 +945,26 @@ line_feed:
 	seq_puts(m, "\n");
 }
 
-static void show_platform_setting_line(struct thinkpad_wmi *thinkpad,       //@Platform_settings
-				   struct seq_file *m, int i, bool list_valid)              //@Platform_settings
-{                                                                           //@Platform_settings
-	int ret;                                                                //@Platform_settings
-	char *settings = NULL, *choices = NULL, *p;                             //@Platform_settings
-                                                                            //@Platform_settings
-	ret = thinkpad_wmi_platform_setting(i, &settings);                      //@Platform_settings
-	if (ret || !settings)                                                   //@Platform_settings
-		return;                                                             //@Platform_settings
-                                                                            //@Platform_settings
-	p = strchr(settings, ',');                                              //@Platform_settings
-	if (p)                                                                  //@Platform_settings
-		*p = '=';                                                           //@Platform_settings
-	seq_printf(m, "%s", settings);                                          //@Platform_settings
-                                                                            //@Platform_settings
-                                                                            //@Platform_settings
-//	if (!thinkpad->can_get_bios_selections)                                 //@Platform_settings
-//		goto line_feed;                                                     //@Platform_settings
-//                                                                          //@Platform_settings
-//	if (p)                                                                  //@Platform_settings
-//		*p = '\0';                                                          //@Platform_settings
-//                                                                          //@Platform_settings
-//	ret = thinkpad_wmi_get_bios_selections(settings, &choices);             //@Platform_settings
-//	if (ret || !choices || !*choices)                                       //@Platform_settings
-//		goto line_feed;                                                     //@Platform_settings
-//                                                                          //@Platform_settings
-//	seq_printf(m, "\t[%s]", choices);                                       //@Platform_settings
-                                                                            //@Platform_settings
-//line_feed:                                                                //@Platform_settings
-	kfree(settings);                                                        //@Platform_settings
-	kfree(choices);                                                         //@Platform_settings
-	seq_puts(m, "\n");                                                      //@Platform_settings
-}                                                                           //@Platform_settings
+static void show_platform_setting_line(struct thinkpad_wmi *thinkpad,
+				   struct seq_file *m, int i, bool list_valid)
+{
+	int ret; 
+	char *settings = NULL, *choices = NULL, *p;
+    
+	ret = thinkpad_wmi_platform_setting(i, &settings);
+	if (ret || !settings)
+		return;
+
+	p = strchr(settings, ',');
+	if (p)
+		*p = '=';
+	seq_printf(m, "%s", settings);
+
+
+	kfree(settings);
+	kfree(choices);
+	seq_puts(m, "\n");
+}
 
 static int dbgfs_bios_settings(struct seq_file *m, void *data)
 {
@@ -984,16 +977,16 @@ static int dbgfs_bios_settings(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int dbgfs_platform_settings(struct seq_file *m, void *data)          //@Platform_settings
-{                                                                           //@Platform_settings
-	struct thinkpad_wmi *thinkpad = m->private;                             //@Platform_settings
-	int i;                                                                  //@Platform_settings
-                                                                            //@Platform_settings
-	for (i = 0; i < thinkpad->settings_count; ++i)                          //@Platform_settings
-	show_platform_setting_line(thinkpad, m, i, true);                       //@Platform_settings
+static int dbgfs_platform_settings(struct seq_file *m, void *data)
+{
+	struct thinkpad_wmi *thinkpad = m->private;
+	int i;
 
-	return 0;                                                               //@Platform_settings
-}                                                                           //@Platform_settings
+	for (i = 0; i < thinkpad->settings_count; ++i)
+	show_platform_setting_line(thinkpad, m, i, true);
+
+	return 0;
+}
 
 static int dbgfs_bios_setting(struct seq_file *m, void *data)
 {
@@ -1029,12 +1022,12 @@ static int dbgfs_set_bios_settings(struct seq_file *m, void *data)
 	return thinkpad_wmi_set_bios_settings(thinkpad->debug.argument);
 }
 
-static int dbgfs_set_platform_settings(struct seq_file *m, void *data)      //@Platform_settings
-{                                                                           //@Platform_settings
-	struct thinkpad_wmi *thinkpad = m->private;                             //@Platform_settings
-                                                                            //@Platform_settings
-	return thinkpad_wmi_set_platform_settings(thinkpad->debug.argument);    //@Platform_settings
-}                                                                           //@Platform_settings
+static int dbgfs_set_platform_settings(struct seq_file *m, void *data)
+{
+	struct thinkpad_wmi *thinkpad = m->private;
+
+	return thinkpad_wmi_set_platform_settings(thinkpad->debug.argument);
+}
 
 static int dbgfs_save_bios_settings(struct seq_file *m, void *data)
 {
@@ -1091,8 +1084,8 @@ static struct thinkpad_wmi_debugfs_node thinkpad_wmi_debug_files[] = {
 	{ NULL, "load_default", dbgfs_load_default },
 	{ NULL, "set_bios_password", dbgfs_set_bios_password },
 	{ NULL, "bios_password_settings", dbgfs_bios_password_settings },
-	{ NULL, "platform_settings", dbgfs_platform_settings },                 //@Platform_settings
-	{ NULL, "set_platform_settings", dbgfs_set_platform_settings },         //@Platform_settings
+	{ NULL, "platform_settings", dbgfs_platform_settings },
+	{ NULL, "set_platform_settings", dbgfs_set_platform_settings },
 };
 
 static int thinkpad_wmi_debugfs_open(struct inode *inode, struct file *file)
@@ -1199,8 +1192,8 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 	 * and use it to create sysfs attributes */
 	for (i = 0; i < 0xFF; ++i) {
 		char *item = NULL;
-        int spleng = 0;
-        int num = 0;
+		int spleng = 0;
+		int num = 0;
 		char *p;
 
 		status = thinkpad_wmi_bios_setting(i, &item);
@@ -1212,13 +1205,15 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 			break;
 		if (!*item )
 			continue;
-
-        spleng=strlen(item);
-        for(num=0;num < spleng; num++) {
-        	if(item[num]=='/'){
-        		item[num]='\\';
-         	 }
-        }
+		
+		/* It is not allowed to have '/' for file name. Convert it into '\'. */
+		spleng = strlen(item);
+		for (num = 0; num < spleng; num++) {
+			if (item[num] == '/') {
+				item[num] = '\\';
+			}
+		}
+		
 		/* Remove the value part */
 		p = strchr(item, ',');
 		if (p)
