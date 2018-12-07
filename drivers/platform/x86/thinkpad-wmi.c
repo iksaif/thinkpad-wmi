@@ -813,7 +813,7 @@ static int __init thinkpad_wmi_sysfs_init(struct platform_device *device)
 	int count = thinkpad->settings_count;
 	int i, ret;
 
-	devattrs = kmalloc(sizeof(*devattrs) * count, GFP_KERNEL);
+	devattrs = kzalloc(sizeof(*devattrs) * count, GFP_KERNEL);
 	if (!devattrs)
 		return -ENOMEM;
 	thinkpad->devattrs = devattrs;
