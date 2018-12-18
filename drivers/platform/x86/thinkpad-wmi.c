@@ -332,8 +332,10 @@ static int thinkpad_wmi_simple_call(const char *guid,
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
 	acpi_status status;
 
-	//duplicated call required to match bios workaround for behavior
-	//seen when WMI accessed via scripting on other OS
+	/*
+	 * duplicated call required to match bios workaround for behavior
+	 * seen when WMI accessed via scripting on other OS
+	 */
 	status = wmi_evaluate_method(guid, 0, 0, &input, &output);
 	status = wmi_evaluate_method(guid, 0, 0, &input, &output);
 
