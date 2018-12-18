@@ -332,6 +332,8 @@ static int thinkpad_wmi_simple_call(const char *guid,
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
 	acpi_status status;
 
+	//duplicated call required to match bios workaround for behavior
+	//seen when WMI accessed via scripting on other OS
 	status = wmi_evaluate_method(guid, 0, 0, &input, &output);
 	status = wmi_evaluate_method(guid, 0, 0, &input, &output);
 
@@ -455,8 +457,7 @@ static int thinkpad_wmi_password_settings(struct thinkpad_wmi_pcfg *pcfg)
 			memcpy(pcfg, obj->buffer.pointer, sizeof(*pcfg));
 			kfree(obj);
 			return 0;
-		}
-		else{
+		} else {
 			pr_warn("Unknown pcfg buffer length %d\n", obj->buffer.length);
 			kfree(obj);
 			return -EIO;
@@ -753,7 +754,7 @@ static ssize_t store_load_default(struct device *dev,
 	
 	ret = thinkpad_wmi_load_default(thinkpad->auth_string);
 	if (ret)
-	return ret;
+		return ret;
 	return count;
 
 }
@@ -949,7 +950,7 @@ static void show_platform_setting_line(struct thinkpad_wmi *thinkpad,
 				   struct seq_file *m, int i, bool list_valid)
 {
 	int ret; 
-	char *settings = NULL, *choices = NULL, *p;
+	char *settings = NULL, *p;
     
 	ret = thinkpad_wmi_platform_setting(i, &settings);
 	if (ret || !settings)
@@ -962,7 +963,6 @@ static void show_platform_setting_line(struct thinkpad_wmi *thinkpad,
 
 
 	kfree(settings);
-	kfree(choices);
 	seq_puts(m, "\n");
 }
 
@@ -983,7 +983,7 @@ static int dbgfs_platform_settings(struct seq_file *m, void *data)
 	int i;
 
 	for (i = 0; i < thinkpad->settings_count; ++i)
-	show_platform_setting_line(thinkpad, m, i, true);
+		show_platform_setting_line(thinkpad, m, i, true);
 
 	return 0;
 }
@@ -1199,11 +1199,9 @@ static void __init thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		status = thinkpad_wmi_bios_setting(i, &item);
 		if (ACPI_FAILURE(status))
 			break;
-		//if (!item || !*item)
-		//	break;
 		if (!item )
 			break;
-		if (!*item )
+		if (!*item)
 			continue;
 		
 		/* It is not allowed to have '/' for file name. Convert it into '\'. */
