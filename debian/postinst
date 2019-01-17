@@ -10,12 +10,11 @@ PACKAGE_NAME=thinkpad-wmi-dkms
 
 VERSION=`dpkg-query -W -f='${Version}' $PACKAGE_NAME | awk -F "-" '{print $1}' \
 	| cut -d\: -f2`
-ARCH=`dpkg --print-architecture`
 
 dkms_configure () {
 	for POSTINST in /usr/lib/dkms/common.postinst "/usr/share/$PACKAGE_NAME/postinst"; do
 		if [ -f "$POSTINST" ]; then
-			"$POSTINST" "$PACKAGE_NAME" "$VERSION" "/usr/share/$PACKAGE_NAME" "$ARCH" "$2"
+			"$POSTINST" "$PACKAGE_NAME" "$VERSION" "/usr/share/$PACKAGE_NAME" "" "$2"
 			return $?
 		fi
 		echo "WARNING: $POSTINST does not exist." >&2
