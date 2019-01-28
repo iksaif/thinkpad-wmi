@@ -85,6 +85,8 @@ The debugfs interface maps closely to the WMI Interface (see driver and doc).
 * instance: setting instance.
 * instance_count: number of settings.
 * password_settings: password settings.
+* platform_settings: show all platform settings. (It is only for special customers)
+* set_platform_settings: set and save platform settings. (It is only for special customers)
 
 ## References
 
