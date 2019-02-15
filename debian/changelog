@@ -1,3 +1,9 @@
+thinkpad-wmi (4.26) UNRELEASED; urgency=medium
+
+  * Add Thinkstation Support 
+  
+ -- Adam Soderlund <asoderlund3@lenovo.com>  Fri, 11 Jan 2019 05:43:44 +1000
+
 thinkpad-wmi (4.25) UNRELEASED; urgency=medium
 
   * Add initramfs integration to include the module into the initrd.
