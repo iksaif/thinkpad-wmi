@@ -1218,9 +1218,9 @@ static void thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		if (p)
 			*p = '\0';
 		thinkpad->settings[i] = item; /* Cache setting name */
+		thinkpad->settings_count++;
 	}
 
-	thinkpad->settings_count = i;
 	pr_info("Found %d settings", thinkpad->settings_count);
 
 	if (wmi_has_guid(LENOVO_SET_BIOS_SETTINGS_GUID) &&
