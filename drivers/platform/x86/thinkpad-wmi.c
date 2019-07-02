@@ -202,6 +202,14 @@ MODULE_LICENSE("GPL");
 #define LENOVO_SET_PLATFORM_SETTINGS_GUID \
     "7FF47003-3B6C-4E5E-A227-E979824A85D1"
 
+/*
+ * LENOVO_MAX_SETTINGS is the maximum amount of settings to
+ * attempt discovery of by querying via thinkpad_wmi_bios_setting().
+ * Note that the settings are not continuous in the range 0 through
+ * LENOVO_MAX_SETTINGS.
+ */
+#define LENOVO_MAX_SETTINGS	256
+
 /* Return values */
 
 enum {
@@ -265,15 +273,13 @@ struct thinkpad_wmi_pcfg {
 struct thinkpad_wmi_debug {
 	struct dentry *root;
 
-	u8 instances_count;
+	int instances_count;
 	u8 instance;
 	char argument[512];
 };
 
 struct thinkpad_wmi {
 	struct wmi_device *wmi_device;
-
-	int settings_count;
 
 	char password[64];
 	char password_encoding[64];
@@ -288,7 +294,7 @@ struct thinkpad_wmi {
 	bool can_set_bios_password;
 	bool can_get_password_settings;
 
-	char *settings[256];
+	char *settings[LENOVO_MAX_SETTINGS];
 	struct dev_ext_attribute *devattrs;
 	struct thinkpad_wmi_debug debug;
 };
@@ -798,7 +804,7 @@ static void thinkpad_wmi_sysfs_exit(struct wmi_device *wdev)
 	if (!thinkpad->devattrs)
 		return;
 
-	for (i = 0; i < thinkpad->settings_count; ++i) {
+	for (i = 0; i < LENOVO_MAX_SETTINGS; i++) {
 		struct dev_ext_attribute *deveattr = &thinkpad->devattrs[i];
 		struct device_attribute *devattr = &deveattr->attr;
 
@@ -813,15 +819,14 @@ static int thinkpad_wmi_sysfs_init(struct wmi_device *wdev)
 {
 	struct thinkpad_wmi *thinkpad = dev_get_drvdata(&wdev->dev);
 	struct dev_ext_attribute *devattrs;
-	int count = thinkpad->settings_count;
 	int i, ret;
 
-	devattrs = kzalloc(sizeof(*devattrs) * count, GFP_KERNEL);
+	devattrs = kzalloc(sizeof(*devattrs) * LENOVO_MAX_SETTINGS, GFP_KERNEL);
 	if (!devattrs)
 		return -ENOMEM;
 	thinkpad->devattrs = devattrs;
 
-	for (i = 0; i < count; ++i) {
+	for (i = 0; i < LENOVO_MAX_SETTINGS; i++) {
 		struct dev_ext_attribute *deveattr = &devattrs[i];
 		struct device_attribute *devattr = &deveattr->attr;
 		if(!thinkpad->settings[i]) {
@@ -972,7 +977,7 @@ static int dbgfs_bios_settings(struct seq_file *m, void *data)
 	struct thinkpad_wmi *thinkpad = m->private;
 	int i;
 
-	for (i = 0; i < thinkpad->settings_count; ++i)
+	for (i = 0; i < LENOVO_MAX_SETTINGS; i++)
 		show_bios_setting_line(thinkpad, m, i, true);
 
 	return 0;
@@ -983,7 +988,7 @@ static int dbgfs_platform_settings(struct seq_file *m, void *data)
 	struct thinkpad_wmi *thinkpad = m->private;
 	int i;
 
-	for (i = 0; i < thinkpad->settings_count; ++i)
+	for (i = 0; i < LENOVO_MAX_SETTINGS; i++)
 		show_platform_setting_line(thinkpad, m, i, true);
 
 	return 0;
@@ -1114,7 +1119,7 @@ static int thinkpad_wmi_debugfs_init(struct thinkpad_wmi *thinkpad)
 	struct dentry *dent;
 	int i;
 
-	thinkpad->debug.instances_count = thinkpad->settings_count;
+	thinkpad->debug.instances_count = LENOVO_MAX_SETTINGS;
 
 	thinkpad->debug.root = debugfs_create_dir(THINKPAD_WMI_FILE, NULL);
 	if (!thinkpad->debug.root) {
@@ -1134,7 +1139,7 @@ static int thinkpad_wmi_debugfs_init(struct thinkpad_wmi *thinkpad)
 	if (!dent)
 		goto error_debugfs;
 
-	dent = debugfs_create_u8("instances_count", S_IRUGO,
+	dent = debugfs_create_u32("instances_count", S_IRUGO,
 				 thinkpad->debug.root,
 				 &thinkpad->debug.instances_count);
 	if (!dent)
@@ -1187,11 +1192,10 @@ error_debugfs:
 static void thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 {
 	acpi_status status;
-	int i = 0;
+	int i, settings_count = 0;
 
-	/* Try to find the number of valid settings of this machine
-	 * and use it to create sysfs attributes */
-	for (i = 0; i < 0xFF; ++i) {
+	/* Try to find the number of valid settings on this machine. */
+	for (i = 0; i < LENOVO_MAX_SETTINGS; i++) {
 		char *item = NULL;
 		int spleng = 0;
 		int num = 0;
@@ -1218,10 +1222,10 @@ static void thinkpad_wmi_analyze(struct thinkpad_wmi *thinkpad)
 		if (p)
 			*p = '\0';
 		thinkpad->settings[i] = item; /* Cache setting name */
-		thinkpad->settings_count++;
+		settings_count++;
 	}
 
-	pr_info("Found %d settings", thinkpad->settings_count);
+	pr_info("Found %d settings", settings_count);
 
 	if (wmi_has_guid(LENOVO_SET_BIOS_SETTINGS_GUID) &&
 	    wmi_has_guid(LENOVO_SAVE_BIOS_SETTINGS_GUID)) {
