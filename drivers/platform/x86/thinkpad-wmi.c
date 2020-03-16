@@ -1134,11 +1134,9 @@ static int thinkpad_wmi_debugfs_init(struct thinkpad_wmi *thinkpad)
 	if (!dent)
 		goto error_debugfs;
 
-	dent = debugfs_create_u8("instance", S_IRUGO | S_IWUSR,
+	debugfs_create_u8("instance", S_IRUGO | S_IWUSR,
 				 thinkpad->debug.root,
 				 &thinkpad->debug.instance);
-	if (!dent)
-		goto error_debugfs;
 
 	dent = debugfs_create_u32("instances_count", S_IRUGO,
 				 thinkpad->debug.root,
