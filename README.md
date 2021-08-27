@@ -3,6 +3,8 @@
 Linux Driver for Thinkpad WMI interface, allows you to control most
 BIOS settings from Linux, and maybe more.
 
+⚠️ (think-lmi)[https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/drivers/platform/x86/think-lmi.c] now provides the same features and has been merged upstream ⚠️ - __Use think-lmi instead__
+
 ## sysfs interface
 
 Directory: /sys/bus/wmi/drivers/thinkpad-wmi/
